@@ -1,126 +1,145 @@
 #include <Arduino.h>
 #include <DHT.h>
+#include <ESPAsyncWebServer.h>
 #include <WiFi.h>
+const char* ssid = "ESP32 WiFI AP";
+AsyncWebServer server(80);
+unsigned long previousMillis = 0;
+const long interval = 5000;
+// 溫濕度
+#define DHTPIN 27
+DHT dht(DHTPIN, DHT11);
+float t = 0.0;
+float h = 0.0;
 
-// #define DHTPIN 13
-// DHT dht(DHTPIN, DHT11);
-
+// 光敏
 // #define sensor 26
 // #define internal_led 13
 // int value = 0;
 
+// 人體
 // int inPin = 13;
 // int val;
 
+// 麥克風
 // int sound_digital = 13;
 // int sound_analog = 26;
 
-const char* ssid = "ESP32 WiFI AP"; /*Set Your SSID*/
-const char* password = "123456789"; /*Set Your Password*/
-WiFiServer server(80); /* Instance of WiFiServer with port number 80 */
-WiFiClient client;
-IPAddress Ip(192, 168, 1, 1);
-IPAddress NMask(255, 255, 255, 0);
-String request;
-#define LED 21
-int LED_Status;
+const char index_html[] PROGMEM = R"rawliteral(
+<!DOCTYPE HTML><html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    html {
+     font-family: Arial;
+     display: inline-block;
+     margin: 0px auto;
+     text-align: center;
+    }
+    h2 { font-size: 3.0rem; }
+    p { font-size: 3.0rem; }
+    .units { font-size: 1.2rem; }
+    .AHT-labels{
+      font-size: 1.5rem;
+      vertical-align:middle;
+      padding-bottom: 15px;
+    }
+  </style>
+</head>
+<body>
+  <h2>ESP32 DHT Server</h2>
+  <p>
+    <span class="AHT-labels">Temperature</span> 
+    <span id="temperature">%TEMPERATURE%</span>
+    <sup class="units">&deg;C</sup>
+  </p>
+  <p>
+    <span class="AHT-labels">Humidity</span>
+    <span id="humidity">%HUMIDITY%</span>
+    <sup class="units">%</sup>
+  </p>
+</body>
+<script>
+setInterval(function ( ) {
+  var xhttp = new XMLHttpRequest();
+  xhttp.onreadystatechange = function() {
+    if (this.readyState == 4 && this.status == 200) {
+      document.getElementById("temperature").innerHTML = this.responseText;
+    }
+  };
+  xhttp.open("GET", "/temperature", true);
+  xhttp.send();
+}, 10000 ) ;
+
+setInterval(function ( ) {
+  var xhttp = new XMLHttpRequest();
+  xhttp.onreadystatechange = function() {
+    if (this.readyState == 4 && this.status == 200) {
+      document.getElementById("humidity").innerHTML = this.responseText;
+    }
+  };
+  xhttp.open("GET", "/humidity", true);
+  xhttp.send();
+}, 10000 ) ;
+</script>
+</html>)rawliteral";
+
+String processor(const String& var) {
+  Serial.println(var);
+  if (var == "TEMPERATURE") {
+    return String(t);
+  } else if (var == "HUMIDITY") {
+    return String(h);
+  }
+  return String();
+}
 
 void setup() {
-  // Serial.begin(9600);
+  Serial.begin(115200);
+  // 溫濕度
+  dht.begin();
 
-  // dht.begin();
-
+  // 光敏
   // pinMode(sensor, INPUT);
   // pinMode(internal_led, OUTPUT);
 
+  // 人體
   // pinMode(inPin, INPUT);
 
+  // 麥克風
   // pinMode(sound_digital, INPUT);
 
-  Serial.begin(115200);
-  pinMode(LED, OUTPUT);
-  digitalWrite(LED, LOW);
-  Serial.println("ESP32 Access Point Mode");
-  WiFi.mode(WIFI_AP);
-  WiFi.softAP(ssid, password);
-  delay(100);
-  WiFi.softAPConfig(Ip, Ip, NMask);
-  Serial.print("Connect to IP address: ");
-  Serial.println(WiFi.softAPIP());
+  t = dht.readTemperature();
+  h = dht.readHumidity();
+  Serial.print("Setting AP (Access Point)…");
+  WiFi.softAP(ssid);
+  IPAddress IP = WiFi.softAPIP();
+  Serial.print("AP IP address: ");
+  Serial.println(IP);
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest* request) {
+    request->send_P(200, "text/html", index_html, processor);
+  });
+  server.on("/temperature", HTTP_GET, [](AsyncWebServerRequest* request) {
+    request->send_P(200, "text/plain", String(t).c_str());
+  });
+  server.on("/humidity", HTTP_GET, [](AsyncWebServerRequest* request) {
+    request->send_P(200, "text/plain", String(h).c_str());
+  });
   server.begin();
 }
 
-void html() {
-  client.println("HTTP/1.1 200 OK");
-  client.println("Content-Type: text/html");
-  client.println("Connection: close");
-  client.println();
-
-  client.println("<!DOCTYPE HTML>");
-  client.println("<html>");
-
-  client.println("<head>");
-  client.println(
-      "<meta name=\"viewport\" content=\"width=device-width, "
-      "initial-scale=1\">");
-  client.println("<link rel=\"icon\" href=\"data:,\">");
-  client.println("<style>");
-  client.println(
-      "html { font-family: Roboto; display: inline-block; margin: 0px auto; "
-      "text-align: center;}");
-  client.println(
-      ".button {background-color: #4CAF50; border: none; color: white; "
-      "padding: 15px 32px; text-align: center; text-decoration: none; display: "
-      "inline-block; font-size: 16px; margin: 4px 2px; cursor: pointer;");
-  client.println(
-      "text-decoration: none; font-size: 25px; margin: 2px; cursor: pointer;}");
-  client.println(
-      ".button_ON {background-color: white; color: black; border: 2px solid "
-      "#4CAF50;}");
-  client.println(
-      ".button_OFF {background-color: white; color: black; border: 2px solid "
-      "#f44336;}");
-  client.println("</style>");
-  client.println("</head>");
-  client.println("<body>");
-  client.println("<h2>ESP32 WiFi AP Mode</h2>");
-  client.println("<p>Click to ON and OFF the LED</p>");
-
-  if (LED_Status == LOW) {
-    client.print(
-        "<p><a href=\"/LED_ON\n\"><button class=\"button "
-        "button_ON\">ON</button></a></p>");
-  }
-
-  else {
-    client.print(
-        "<p><a href=\"/LED_OFF\n\"><button class=\"button "
-        "button_OFF\">OFF</button></a></p>");
-  }
-
-  client.println("</body>");
-  client.println("</html>");
-}
-
 void loop() {
-  // 讀取溫濕度數據
-  // float temperatureCelsius = dht.readTemperature();  // 讀取攝氏溫度值
-  // float humidity = dht.readHumidity();               // 讀取相對濕度值
+  // 溫濕度
+  // float temperatureCelsius = dht.readTemperature();
+  // float humidity = dht.readHumidity();
+  // Serial.print("目前溫度：");
+  // Serial.print(temperatureCelsius);
+  // Serial.print(" °C\t");
+  // Serial.print("目前濕度：");
+  // Serial.print(humidity);
+  // Serial.println(" %");
 
-  // // 確保讀取的數據是有效的
-  // if (isnan(temperatureCelsius) || isnan(humidity)) {
-  //   Serial.println("無法讀取溫濕度數據，請檢查連接。");
-  // } else {
-  //   Serial.print("目前溫度：");
-  //   Serial.print(temperatureCelsius);
-  //   Serial.print(" °C\t");
-  //   Serial.print("目前濕度：");
-  //   Serial.print(humidity);
-  //   Serial.println(" %");
-  // }
-
-  // delay(2000);  // 每2秒更新一次溫濕度數據
-
+  // 光敏
   // value = digitalRead(sensor);
   // if (value == HIGH) {  // in front of it
   //   digitalWrite(internal_led, HIGH);
@@ -130,13 +149,15 @@ void loop() {
   //   Serial.println("LOW");
   // }
 
-  // val = digitalRead(inPin);  // 人體紅外線感測器讀出數位值
+  // 人體
+  // val = digitalRead(inPin);
   // if (val == HIGH) {
   //   Serial.println("HIGH");
   // } else {
   //   Serial.println("LOW");
   // }
 
+  // 麥克風
   // int val_digital = digitalRead(sound_digital);
   // int val_analog = analogRead(sound_analog);
   // Serial.print(val_analog);
@@ -148,33 +169,14 @@ void loop() {
   //   Serial.println("LOW");
   // }
 
-  client = server.available();
-  if (!client) {
-    return;
+  unsigned long currentMillis = millis();
+  if (currentMillis - previousMillis >= interval) {
+    previousMillis = currentMillis;
+    float newT = dht.readTemperature();
+    t = newT;
+    Serial.println(t);
+    float newH = dht.readHumidity();
+    h = newH;
+    Serial.println(h);
   }
-  while (client.connected()) {
-    if (client.available()) {
-      char c = client.read();
-      request += c;
-
-      if (c == '\n') {
-        if (request.indexOf("GET /LED_ON") != -1) {
-          Serial.println("LED in ON");
-          digitalWrite(LED, HIGH);
-          LED_Status = HIGH;
-        }
-
-        if (request.indexOf("GET /LED_OFF") != -1) {
-          Serial.println("LED in OFF");
-          digitalWrite(LED, LOW);
-          LED_Status = LOW;
-        }
-        html();
-        break;
-      }
-    }
-  }
-  delay(1);
-  request = "";
-  client.stop();
 }
